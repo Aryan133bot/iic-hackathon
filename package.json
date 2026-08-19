@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.119.0",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
+    "lucide-react": "^1.33.0",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
