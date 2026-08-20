@@ -163,7 +163,9 @@ export default function DashboardShell() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <ShieldAlert className="text-accent w-6 h-6" />
-            <h1 className="text-xl font-bold tracking-wider">ORBITGUARD</h1>
+            <h1 className="text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-white to-accent drop-shadow-[0_0_8px_rgba(56,189,248,0.5)]">
+              ORBITGUARD
+            </h1>
           </div>
           <div className="text-xs font-mono text-white/40 flex items-center gap-2 bg-white/5 px-3 py-1 rounded">
             <Activity className="w-3 h-3" />

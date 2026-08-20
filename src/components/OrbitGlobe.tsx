@@ -34,18 +34,27 @@ interface OrbitGlobeProps {
 
 function Earth() {
   return (
-    <Sphere args={[EARTH_RADIUS_KM * SCALE, 64, 64]}>
-      {/* A clean, reliable procedural-looking Earth material */}
-      <meshPhongMaterial 
-        color="#0a1b3f" 
-        emissive="#041024" 
-        specular="#223344" 
-        shininess={15} 
-        transparent={true}
-        opacity={0.9}
-        wireframe={false}
-      />
-    </Sphere>
+    <group>
+      <Sphere args={[EARTH_RADIUS_KM * SCALE, 64, 64]}>
+        <meshPhongMaterial 
+          color="#0a1b3f" 
+          emissive="#041024" 
+          specular="#223344" 
+          shininess={15} 
+          transparent={true}
+          opacity={0.9}
+        />
+      </Sphere>
+      {/* Grid overlay for "hacker" look */}
+      <Sphere args={[EARTH_RADIUS_KM * SCALE + 0.01, 32, 32]}>
+        <meshBasicMaterial 
+          color="#1e3a8a" 
+          wireframe={true}
+          transparent={true}
+          opacity={0.25}
+        />
+      </Sphere>
+    </group>
   );
 }
 
