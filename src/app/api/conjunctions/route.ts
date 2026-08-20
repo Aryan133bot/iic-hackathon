@@ -4,6 +4,17 @@ import { getTLEData } from '@/lib/orbits/tle-cache';
 import { parseTLEToSatrec } from '@/lib/orbits/propagation';
 import { screenConjunctions } from '@/lib/orbits/conjunctions';
 import { ConjunctionEvent } from '@/lib/types/orbits';
+import demoData from '@/data/demo-scenario.json';
+
+// Helper to update a TLE epoch to "now" so demo data is always valid
+function updateTLEEpochToNow(line1: string): string {
+  const now = new Date();
+  const year = now.getUTCFullYear() % 100;
+  const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 0));
+  const diff = (now.getTime() - start.getTime()) / 86400000;
+  const epochStr = `${year.toString().padStart(2, '0')}${diff.toFixed(8).padStart(12, '0')}`;
+  return line1.substring(0, 18) + epochStr + line1.substring(32);
+}
 
 let cachedEvents: ConjunctionEvent[] = [];
 let lastComputeTime = 0;
@@ -12,9 +23,10 @@ const COMPUTE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const forceRefresh = url.searchParams.get('refresh') === 'true';
+  const isDemo = url.searchParams.get('demo') === 'true';
   const now = Date.now();
 
-  if (!forceRefresh && (now - lastComputeTime) < COMPUTE_TTL_MS && cachedEvents.length > 0) {
+  if (!isDemo && !forceRefresh && (now - lastComputeTime) < COMPUTE_TTL_MS && cachedEvents.length > 0) {
     return NextResponse.json({
       computedAt: new Date(lastComputeTime).toISOString(),
       staleAfter: new Date(lastComputeTime + COMPUTE_TTL_MS).toISOString(),
@@ -23,12 +35,21 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Fetch live TLE data
-    const tleData = await getTLEData(forceRefresh);
+    let tleObjects = [];
+    if (isDemo) {
+      tleObjects = demoData.map(obj => ({
+        ...obj,
+        line1: updateTLEEpochToNow(obj.line1)
+      }));
+    } else {
+      const tleRes = await getTLEData(forceRefresh);
+      tleObjects = tleRes.objects;
+    }
+    
     const validObjects: { noradId: number; name: string; satrec: any }[] = [];
 
     // 2. Parse into satrecs
-    for (const obj of tleData.objects) {
+    for (const obj of tleObjects) {
       try {
         const satrec = parseTLEToSatrec(obj.line1, obj.line2);
         validObjects.push({ noradId: obj.noradId, name: obj.name, satrec });
@@ -53,13 +74,15 @@ export async function GET(req: NextRequest) {
       return a.closestApproachKm - b.closestApproachKm;
     });
 
-    cachedEvents = events;
-    lastComputeTime = now;
+    if (!isDemo) {
+      cachedEvents = events;
+      lastComputeTime = now;
+    }
 
     return NextResponse.json({
-      computedAt: new Date(lastComputeTime).toISOString(),
-      staleAfter: new Date(lastComputeTime + COMPUTE_TTL_MS).toISOString(),
-      events: cachedEvents,
+      computedAt: new Date(isDemo ? now : lastComputeTime).toISOString(),
+      staleAfter: new Date((isDemo ? now : lastComputeTime) + COMPUTE_TTL_MS).toISOString(),
+      events: isDemo ? events : cachedEvents,
     });
   } catch (error: unknown) {
     console.error('Conjunction computation failed:', error);

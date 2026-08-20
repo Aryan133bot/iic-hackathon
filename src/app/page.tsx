@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
-import { ShieldAlert, Activity, Satellite, Loader2, Bot, AlertTriangle, RefreshCw, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { ShieldAlert, Activity, Satellite, Loader2, Bot, AlertTriangle, RefreshCw, Info, ChevronDown, ChevronUp, FastForward, FlaskConical } from 'lucide-react';
 import OrbitGlobe, { OrbitData } from '@/components/OrbitGlobe';
 import { parseTLEToSatrec, propagateOverWindow } from '@/lib/orbits/propagation';
 import { TLEResponse } from '@/lib/types/tle';
@@ -20,12 +20,15 @@ export default function DashboardShell() {
   const [error, setError] = useState<string | null>(null);
   
   const [infoOpen, setInfoOpen] = useState(false);
+  const dataStartDate = useRef<number>(Date.now());
 
   // Zustand Store
   const { 
     activeEvent, setActiveEvent,
     lastRefreshTime, setLastRefreshTime,
-    filterTier, setFilterTier
+    filterTier, setFilterTier,
+    isDemoMode, setDemoMode,
+    timeCursorIndex, setTimeCursorIndex
   } = useAppStore();
 
   const [briefLoading, setBriefLoading] = useState(false);
@@ -35,11 +38,17 @@ export default function DashboardShell() {
   const loadData = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
+    setTimeCursorIndex(null);
+    setActiveEvent(null);
+
     try {
-      const qs = forceRefresh ? '?refresh=true' : '';
+      const qs = new URLSearchParams();
+      if (forceRefresh) qs.append('refresh', 'true');
+      if (isDemoMode) qs.append('demo', 'true');
+
       const [tleRes, conjRes] = await Promise.all([
-        fetch('/api/tle' + qs).then(r => r.json()),
-        fetch('/api/conjunctions' + qs).then(r => r.json())
+        fetch('/api/tle?' + qs.toString()).then(r => r.json()),
+        fetch('/api/conjunctions?' + qs.toString()).then(r => r.json())
       ]);
 
       if (tleRes.error && !tleRes.objects?.length) {
@@ -53,12 +62,13 @@ export default function DashboardShell() {
       setLastRefreshTime(new Date(tleData.fetchedAt));
 
       const startDate = new Date();
+      dataStartDate.current = startDate.getTime();
       const processedOrbits: OrbitData[] = [];
 
       for (const obj of tleData.objects) {
         try {
           const satrec = parseTLEToSatrec(obj.line1, obj.line2);
-          const trajectory = propagateOverWindow(satrec, startDate, 90, 30);
+          const trajectory = propagateOverWindow(satrec, startDate, 1440, 30); // 24h at 30s
           const trail = trajectory.map(pos => eciToThree(pos.eciPosition.x, pos.eciPosition.y, pos.eciPosition.z));
           
           const riskEvent = conjData.events?.find(e => e.objectA.noradId === obj.noradId || e.objectB.noradId === obj.noradId);
@@ -87,17 +97,19 @@ export default function DashboardShell() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDemoMode]);
 
   const handleSelectEvent = async (event: ConjunctionEvent) => {
     if (activeEvent === event) {
       setActiveEvent(null);
+      setTimeCursorIndex(null);
       return;
     }
     setActiveEvent(event);
     setBriefLoading(true);
     setBriefData(null);
     setBriefError(null);
+    setTimeCursorIndex(null);
 
     try {
       const res = await fetch('/api/brief', {
@@ -117,7 +129,19 @@ export default function DashboardShell() {
     }
   };
 
-  // Filtered conjunctions
+  const handleFastForward = (e: React.MouseEvent, event: ConjunctionEvent) => {
+    e.stopPropagation();
+    if (timeCursorIndex !== null) {
+      setTimeCursorIndex(null); // play normally
+      return;
+    }
+    // Calculate index in the trail
+    const tca = new Date(event.timeOfClosestApproach).getTime();
+    const diffMs = tca - dataStartDate.current;
+    const targetIndex = Math.max(0, diffMs / (30 * 1000));
+    setTimeCursorIndex(targetIndex);
+  };
+
   const conjunctions = useMemo(() => {
     return allConjunctions.filter(ev => {
       if (filterTier !== 'all' && ev.riskTier !== filterTier) return false;
@@ -127,7 +151,13 @@ export default function DashboardShell() {
 
   return (
     <main className="flex h-screen w-full flex-col p-4 gap-4 bg-background text-foreground font-sans overflow-hidden">
-      <header className="flex items-center justify-between border-b border-white/10 pb-4 shrink-0">
+      {isDemoMode && (
+        <div className="absolute top-0 left-0 w-full bg-warning text-warning-foreground font-bold text-center py-1 text-xs tracking-widest z-50 shadow-md">
+          DEMO SCENARIO — Illustrative data, not live
+        </div>
+      )}
+
+      <header className={`flex items-center justify-between border-b border-white/10 pb-4 shrink-0 ${isDemoMode ? 'mt-4' : ''}`}>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <ShieldAlert className="text-accent w-6 h-6" />
@@ -139,11 +169,20 @@ export default function DashboardShell() {
           </div>
         </div>
         
-        <div className="flex items-center gap-4 text-sm font-mono text-white/50">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-6 text-sm font-mono text-white/50">
+          <button 
+            onClick={() => setDemoMode(!isDemoMode)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors font-bold ${isDemoMode ? 'bg-warning/20 text-warning border border-warning/50' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+          >
+            <FlaskConical className="w-4 h-4" />
+            {isDemoMode ? 'DEMO MODE' : 'LIVE DATA'}
+          </button>
+
+          <div className="flex items-center gap-2 border-l border-white/10 pl-6">
             <div className={`w-2 h-2 rounded-full ${loading ? 'bg-warning animate-pulse' : 'bg-accent animate-pulse'}`}></div>
             {loading ? 'ACQUIRING TELEMETRY...' : 'SYSTEM ONLINE'}
           </div>
+          
           {lastRefreshTime && (
             <div className="text-xs text-white/40">
               TLE AS OF: {lastRefreshTime.toISOString().split('T')[1].substring(0, 5)}Z
@@ -162,13 +201,13 @@ export default function DashboardShell() {
 
       <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
         {/* Main 3D View */}
-        <section className="col-span-8 border border-white/10 rounded-lg bg-black/50 relative overflow-hidden flex items-center justify-center">
+        <section className={`col-span-8 border border-white/10 rounded-lg bg-black/50 relative overflow-hidden flex items-center justify-center transition-all ${isDemoMode ? 'ring-1 ring-warning' : ''}`}>
           <div className="absolute top-4 left-4 text-xs font-mono text-white/30 flex flex-col gap-2 z-10">
             <div className="flex items-center gap-2">
               <Satellite className="w-4 h-4" />
               EARTH ORBIT VISUALIZATION
             </div>
-            <div className="bg-white/5 p-2 rounded backdrop-blur max-w-sm">
+            <div className="bg-white/5 p-2 rounded backdrop-blur max-w-sm border border-white/10">
               <button onClick={() => setInfoOpen(!infoOpen)} className="flex items-center justify-between w-full text-white/50 hover:text-white/80 transition-colors">
                 <span className="flex items-center gap-2 font-bold"><Info className="w-3 h-3" /> HOW THIS WORKS</span>
                 {infoOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -224,7 +263,10 @@ export default function DashboardShell() {
               <div className="text-white/30 p-4 border border-white/10 rounded flex flex-col items-center justify-center h-48 text-center gap-4">
                 <ShieldAlert className="w-8 h-8 opacity-50" />
                 No conjunctions above the 10km threshold in the next 24h — this is expected most of the time.
-                <button className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded transition-colors text-white mt-2">
+                <button 
+                  onClick={() => setDemoMode(true)}
+                  className="bg-accent/20 hover:bg-accent/40 text-accent px-4 py-2 rounded transition-colors mt-2 font-bold"
+                >
                   Load Demo Scenario
                 </button>
               </div>
@@ -233,7 +275,8 @@ export default function DashboardShell() {
                 const isActive = activeEvent === event;
                 const msToApproach = new Date(event.timeOfClosestApproach).getTime() - Date.now();
                 const hours = Math.floor(msToApproach / (1000 * 60 * 60));
-                const mins = Math.floor((msToApproach % (1000 * 60 * 60)) / (1000 * 60));
+                const mins = Math.floor((Math.abs(msToApproach) % (1000 * 60 * 60)) / (1000 * 60));
+                const isPast = msToApproach < 0;
                 
                 return (
                   <div 
@@ -246,14 +289,27 @@ export default function DashboardShell() {
                         RISK: {event.riskTier.toUpperCase()}
                       </div>
                       <div className="text-white/40 text-[10px]">
-                        T- {hours}h {mins}m
+                        {isPast ? 'PASSED' : `T- ${hours}h ${mins}m`}
                       </div>
                     </div>
                     
                     <div className="text-white/90">{event.objectA.name}</div>
                     <div className="text-white/50 my-1 text-[10px]">vs</div>
                     <div className="text-white/90">{event.objectB.name}</div>
-                    <div className="mt-2 text-white/50">Dist: {event.closestApproachKm.toFixed(3)} km</div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="text-white/50">Dist: {event.closestApproachKm.toFixed(3)} km</div>
+                      
+                      {isDemoMode && isActive && (
+                        <button 
+                          onClick={(e) => handleFastForward(e, event)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${timeCursorIndex !== null ? 'bg-white/20 text-white' : 'bg-accent/20 text-accent hover:bg-accent/40'}`}
+                          title="Fast Forward to Closest Approach"
+                        >
+                          <FastForward className="w-3 h-3" />
+                          {timeCursorIndex !== null ? 'RESUME' : 'JUMP'}
+                        </button>
+                      )}
+                    </div>
                     
                     {/* Lazy Loaded AI Briefing */}
                     {isActive && (

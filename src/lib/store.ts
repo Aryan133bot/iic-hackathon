@@ -19,6 +19,9 @@ interface AppState {
 
   isDemoMode: boolean;
   setDemoMode: (val: boolean) => void;
+
+  timeCursorIndex: number | null;
+  setTimeCursorIndex: (idx: number | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -35,5 +38,8 @@ export const useAppStore = create<AppState>((set) => ({
   setFilterTime: (time) => set({ filterTime: time }),
   
   isDemoMode: false,
-  setDemoMode: (val) => set({ isDemoMode: val })
+  setDemoMode: (val) => set({ isDemoMode: val }),
+
+  timeCursorIndex: null,
+  setTimeCursorIndex: (idx) => set({ timeCursorIndex: idx })
 }));

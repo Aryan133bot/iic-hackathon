@@ -65,6 +65,7 @@ function Atmosphere() {
 function Satellite({ data }: { data: OrbitData }) {
   const pointRef = useRef<THREE.Mesh>(null);
   const activeEvent = useAppStore(state => state.activeEvent);
+  const timeCursorIndex = useAppStore(state => state.timeCursorIndex);
   
   const isActive = activeEvent && (data.noradId === activeEvent.objectA.noradId || data.noradId === activeEvent.objectB.noradId);
   const materialRef = useRef<THREE.LineBasicMaterial>(null);
@@ -72,9 +73,16 @@ function Satellite({ data }: { data: OrbitData }) {
   useFrame(({ clock }) => {
     if (!pointRef.current || data.trail.length === 0) return;
     
+    let progress = 0;
     const time = clock.getElapsedTime();
-    const speedMultiplier = 0.5; 
-    const progress = (time * speedMultiplier) % data.trail.length;
+
+    if (timeCursorIndex !== null) {
+      progress = timeCursorIndex;
+    } else {
+      const speedMultiplier = 0.5; 
+      progress = (time * speedMultiplier) % data.trail.length;
+    }
+
     const index = Math.floor(progress);
     const nextIndex = (index + 1) % data.trail.length;
     const lerpFactor = progress - index;

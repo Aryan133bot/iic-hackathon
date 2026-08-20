@@ -1,9 +1,38 @@
 import { NextResponse } from 'next/server';
 import { getTLEData } from '@/lib/orbits/tle-cache';
+import demoData from '@/data/demo-scenario.json';
 
-export async function GET() {
+// Helper to update a TLE epoch to "now" so demo data is always valid
+function updateTLEEpochToNow(line1: string): string {
+  const now = new Date();
+  const year = now.getUTCFullYear() % 100;
+  const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 0));
+  const diff = (now.getTime() - start.getTime()) / 86400000;
+  const epochStr = `${year.toString().padStart(2, '0')}${diff.toFixed(8).padStart(12, '0')}`;
+  
+  // TLE Line 1: Epoch is cols 19-32 (index 18-31)
+  return line1.substring(0, 18) + epochStr + line1.substring(32);
+}
+
+export async function GET(request: Request) {
   try {
-    const data = await getTLEData();
+    const { searchParams } = new URL(request.url);
+    const forceRefresh = searchParams.get('refresh') === 'true';
+    const isDemo = searchParams.get('demo') === 'true';
+
+    if (isDemo) {
+      // Return synthetic demo data with fresh epochs
+      const freshDemoObjects = demoData.map(obj => ({
+        ...obj,
+        line1: updateTLEEpochToNow(obj.line1)
+      }));
+      return NextResponse.json({
+        fetchedAt: new Date().toISOString(),
+        objects: freshDemoObjects
+      });
+    }
+
+    const data = await getTLEData(forceRefresh);
     return NextResponse.json(data);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
