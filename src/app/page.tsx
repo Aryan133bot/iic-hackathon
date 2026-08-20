@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { ShieldAlert, Activity, Satellite, Loader2, Bot, AlertTriangle, RefreshCw, Info, ChevronDown, ChevronUp, FastForward, FlaskConical } from 'lucide-react';
+import { ShieldAlert, Activity, Satellite, Loader2, Bot, AlertTriangle, RefreshCw, Info, ChevronDown, ChevronUp, FastForward, FlaskConical, X, Search } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { OrbitData } from '@/components/OrbitGlobe';
 const OrbitGlobe = dynamic(() => import('@/components/OrbitGlobe'), { ssr: false });
@@ -22,7 +22,11 @@ export default function DashboardShell() {
   const [error, setError] = useState<string | null>(null);
   
   const [infoOpen, setInfoOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dataStartDate = useRef<number>(Date.now());
+  
+  const selectedSatellite = useAppStore(state => state.selectedSatellite);
+  const setSelectedSatellite = useAppStore(state => state.setSelectedSatellite);
 
   // Live UTC clock
   const [utcTime, setUtcTime] = useState(new Date().toISOString().split('T')[1].substring(0, 8));
@@ -91,7 +95,8 @@ export default function DashboardShell() {
             type: obj.objectType,
             trail,
             isAtRisk: !!riskEvent,
-            riskTier: riskEvent?.riskTier
+            riskTier: riskEvent?.riskTier,
+            tle: obj
           });
         } catch {
           // Ignore unparseable
@@ -154,6 +159,15 @@ export default function DashboardShell() {
     const targetIndex = Math.max(0, Math.min(diffMs / (30 * 1000), maxTrail - 1));
     setTimeCursorIndex(targetIndex);
   };
+
+  const filteredOrbits = useMemo(() => {
+    if (!searchQuery) return [];
+    const query = searchQuery.toLowerCase();
+    return orbits.filter(o => 
+      o.name.toLowerCase().includes(query) || 
+      o.noradId.toString().includes(query)
+    ).slice(0, 10);
+  }, [searchQuery, orbits]);
 
   const conjunctions = useMemo(() => {
     return allConjunctions.filter(ev => {
@@ -261,12 +275,71 @@ export default function DashboardShell() {
               </button>
             </div>
           ) : (
-            <OrbitGlobe orbits={orbits} />
+            <>
+              <OrbitGlobe orbits={orbits} />
+              
+              {/* Selected Satellite Details Overlay */}
+              {selectedSatellite && (
+                <div className="absolute bottom-4 left-4 z-10 bg-black/80 backdrop-blur border border-accent/50 rounded-lg p-4 w-80 shadow-[0_0_15px_rgba(56,189,248,0.2)]">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-bold text-accent text-sm truncate pr-2">{selectedSatellite.name}</h3>
+                    <button onClick={() => setSelectedSatellite(null)} className="text-white/50 hover:text-white">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-y-2 text-xs font-mono text-white/80">
+                    <div className="text-white/40">NORAD ID</div>
+                    <div className="text-right">{selectedSatellite.noradId}</div>
+                    
+                    <div className="text-white/40">TYPE</div>
+                    <div className="text-right uppercase">{selectedSatellite.objectType}</div>
+                    
+                    <div className="text-white/40">INCLINATION</div>
+                    <div className="text-right">{parseFloat(selectedSatellite.line2.substring(8, 16)).toFixed(2)}°</div>
+                    
+                    <div className="text-white/40">PERIOD</div>
+                    <div className="text-right">{(1440 / parseFloat(selectedSatellite.line2.substring(52, 63))).toFixed(2)}m</div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
 
         {/* Right Sidebar - Alerts */}
         <aside className="col-span-4 border border-white/10 rounded-lg p-4 flex flex-col gap-4 bg-white/5 overflow-hidden">
+          <div className="relative shrink-0 border-b border-white/10 pb-4 mb-2">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-white/40" />
+              <input 
+                type="text" 
+                placeholder="Search satellite by name or ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-black/50 border border-white/20 rounded pl-9 pr-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-accent transition-colors"
+              />
+            </div>
+            
+            {searchQuery && (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0a0e17] border border-white/20 rounded shadow-xl max-h-60 overflow-y-auto">
+                {filteredOrbits.length === 0 ? (
+                  <div className="p-3 text-xs text-white/50 text-center font-mono">No matches found</div>
+                ) : (
+                  filteredOrbits.map(o => (
+                    <div 
+                      key={o.noradId} 
+                      onClick={() => { setSelectedSatellite(o.tle); setSearchQuery(''); }}
+                      className="px-3 py-2 hover:bg-white/10 cursor-pointer font-mono text-xs flex justify-between items-center border-b border-white/5 last:border-0"
+                    >
+                      <span className="truncate pr-2 font-bold text-white/80">{o.name}</span>
+                      <span className="text-white/40 shrink-0">{o.noradId}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between shrink-0 border-b border-white/10 pb-4">
             <h2 className="text-sm font-bold uppercase tracking-widest text-white/50 flex items-center gap-2">
               <Activity className="w-4 h-4" />

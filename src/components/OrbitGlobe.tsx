@@ -19,6 +19,7 @@ export interface OrbitData {
   trail: TrailPoint[]; // Extracted positions scaled to scene units
   isAtRisk: boolean;
   riskTier?: 'critical' | 'high' | 'moderate' | 'low';
+  tle: import('@/lib/types/tle').TLEObject;
 }
 
 interface OrbitGlobeProps {
@@ -69,7 +70,15 @@ function Satellite({ data }: { data: OrbitData }) {
   const activeEvent = useAppStore(state => state.activeEvent);
   const timeCursorIndex = useAppStore(state => state.timeCursorIndex);
   
-  const isActive = activeEvent && (data.noradId === activeEvent.objectA.noradId || data.noradId === activeEvent.objectB.noradId);
+  const selectedSatellite = useAppStore(state => state.selectedSatellite);
+  const setSelectedSatellite = useAppStore(state => state.setSelectedSatellite);
+
+  // Consider it active if it's in the active event OR if it's the individually selected satellite
+  const isSelected = selectedSatellite?.noradId === data.noradId;
+  const isEventActive = activeEvent && (data.noradId === activeEvent.objectA.noradId || data.noradId === activeEvent.objectB.noradId);
+  const isActive = isEventActive || isSelected;
+
+  const isDimmed = selectedSatellite && !isSelected && !isEventActive;
   const materialRef = useRef<THREE.LineBasicMaterial>(null);
 
   useFrame(({ clock }) => {
@@ -98,35 +107,42 @@ function Satellite({ data }: { data: OrbitData }) {
       p1[2] + (p2[2] - p1[2]) * lerpFactor
     );
 
-    if (isActive && materialRef.current) {
-      // Pulse opacity — range [0.4, 1.0]
-      materialRef.current.opacity = 0.4 + 0.3 * (1 + Math.sin(time * 5));
-    } else if (materialRef.current) {
-      materialRef.current.opacity = 0.3;
+    if (materialRef.current) {
+      if (isActive) {
+        // Pulse opacity for active items
+        materialRef.current.opacity = 0.4 + 0.3 * (1 + Math.sin(time * 5));
+      } else {
+        materialRef.current.opacity = isDimmed ? 0.05 : 0.3;
+      }
     }
   });
 
   const getRiskColor = () => {
     if (data.riskTier === 'critical') return '#ef4444'; 
     if (data.riskTier === 'high' || data.riskTier === 'moderate') return '#fbbf24'; 
-    return '#38bdf8'; 
+    return data.type === 'debris' ? '#94a3b8' : '#38bdf8'; 
   };
 
-  const color = getRiskColor();
+  const color = isSelected ? '#ffffff' : getRiskColor();
+
+  const handleClick = (e: import('@react-three/fiber').ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    setSelectedSatellite(data.tle);
+  };
 
   return (
-    <group>
+    <group onClick={handleClick} onPointerEnter={() => { document.body.style.cursor = 'pointer' }} onPointerLeave={() => { document.body.style.cursor = 'auto' }}>
       <Line 
         points={data.trail} 
-        color={isActive ? '#ffffff' : color} 
+        color={color} 
         transparent 
         lineWidth={isActive ? 2 : 1} 
       >
-        <lineBasicMaterial ref={materialRef} attach="material" color={isActive ? '#ffffff' : color} transparent opacity={0.3} />
+        <lineBasicMaterial ref={materialRef} attach="material" color={color} transparent opacity={isDimmed ? 0.05 : 0.3} />
       </Line>
       <mesh ref={pointRef}>
         <sphereGeometry args={[isActive ? 0.1 : 0.05, 8, 8]} />
-        <meshBasicMaterial color={isActive ? '#ffffff' : color} />
+        <meshBasicMaterial color={color} />
       </mesh>
     </group>
   );
@@ -163,9 +179,14 @@ function CameraRig({ orbits }: { orbits: OrbitData[] }) {
 }
 
 export default function OrbitGlobe({ orbits }: OrbitGlobeProps) {
+  const setSelectedSatellite = useAppStore(state => state.setSelectedSatellite);
+
   return (
     <div className="w-full h-full min-h-[500px]">
-      <Canvas camera={{ position: [0, 15, 25], fov: 45 }}>
+      <Canvas 
+        camera={{ position: [0, 15, 25], fov: 45 }}
+        onPointerMissed={() => setSelectedSatellite(null)}
+      >
         <color attach="background" args={['#050810']} />
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 5]} intensity={1.5} />

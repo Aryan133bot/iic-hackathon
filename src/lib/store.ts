@@ -18,6 +18,9 @@ interface AppState {
 
   timeCursorIndex: number | null;
   setTimeCursorIndex: (idx: number | null) => void;
+
+  selectedSatellite: import('@/lib/types/tle').TLEObject | null;
+  setSelectedSatellite: (sat: import('@/lib/types/tle').TLEObject | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -34,5 +37,8 @@ export const useAppStore = create<AppState>((set) => ({
   setDemoMode: (val) => set({ isDemoMode: val }),
 
   timeCursorIndex: null,
-  setTimeCursorIndex: (idx) => set({ timeCursorIndex: idx })
+  setTimeCursorIndex: (idx) => set({ timeCursorIndex: idx }),
+
+  selectedSatellite: null,
+  setSelectedSatellite: (sat) => set({ selectedSatellite: sat })
 }));
