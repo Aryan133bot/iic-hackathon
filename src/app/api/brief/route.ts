@@ -130,7 +130,20 @@ CRITICAL INSTRUCTIONS:
     return NextResponse.json(payload);
   } catch (error: unknown) {
     console.error('Gemini API Error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error occurred during AI generation';
+    let message = error instanceof Error ? error.message : 'Unknown error occurred during AI generation';
+    
+    // Attempt to parse Google API JSON error string for a cleaner message
+    if (message.startsWith('{') && message.includes('"error"')) {
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed.error && parsed.error.message) {
+          message = parsed.error.message;
+        }
+      } catch {
+        // Leave message as-is if parsing fails
+      }
+    }
+    
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
