@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Line, Sphere } from '@react-three/drei';
 import * as THREE from 'three';
+import { useAppStore } from '@/lib/store';
 
 // 1 Scene Unit = 1000 km
 const SCALE = 1 / 1000;
@@ -63,16 +64,16 @@ function Atmosphere() {
 
 function Satellite({ data }: { data: OrbitData }) {
   const pointRef = useRef<THREE.Mesh>(null);
+  const activeEvent = useAppStore(state => state.activeEvent);
   
-  // Animation logic
-  // A simple time scrubber looping along the trail
+  const isActive = activeEvent && (data.noradId === activeEvent.objectA.noradId || data.noradId === activeEvent.objectB.noradId);
+  const materialRef = useRef<THREE.LineBasicMaterial>(null);
+
   useFrame(({ clock }) => {
     if (!pointRef.current || data.trail.length === 0) return;
     
     const time = clock.getElapsedTime();
-    // 60x speed, assuming trail points are e.g. 30s apart, we animate fast.
-    // Let's abstract time as a simple percentage loop
-    const speedMultiplier = 0.5; // adjust to taste
+    const speedMultiplier = 0.5; 
     const progress = (time * speedMultiplier) % data.trail.length;
     const index = Math.floor(progress);
     const nextIndex = (index + 1) % data.trail.length;
@@ -86,33 +87,67 @@ function Satellite({ data }: { data: OrbitData }) {
       p1[1] + (p2[1] - p1[1]) * lerpFactor,
       p1[2] + (p2[2] - p1[2]) * lerpFactor
     );
+
+    if (isActive && materialRef.current) {
+      // Pulse opacity
+      materialRef.current.opacity = 0.4 + 0.6 * Math.sin(time * 5);
+    } else if (materialRef.current) {
+      materialRef.current.opacity = 0.3;
+    }
   });
 
   const getRiskColor = () => {
-    if (data.riskTier === 'critical') return '#ef4444'; // Red
-    if (data.riskTier === 'high' || data.riskTier === 'moderate') return '#fbbf24'; // Amber
-    return '#38bdf8'; // Default Cyan
+    if (data.riskTier === 'critical') return '#ef4444'; 
+    if (data.riskTier === 'high' || data.riskTier === 'moderate') return '#fbbf24'; 
+    return '#38bdf8'; 
   };
 
   const color = getRiskColor();
 
   return (
     <group>
-      {/* Orbit Trail */}
       <Line 
         points={data.trail} 
-        color={color} 
-        opacity={0.3} 
+        color={isActive ? '#ffffff' : color} 
         transparent 
-        lineWidth={1} 
-      />
-      {/* Current Position Marker */}
+        lineWidth={isActive ? 2 : 1} 
+      >
+        <lineBasicMaterial ref={materialRef} attach="material" color={isActive ? '#ffffff' : color} transparent opacity={0.3} />
+      </Line>
       <mesh ref={pointRef}>
-        <sphereGeometry args={[0.05, 8, 8]} />
-        <meshBasicMaterial color={color} />
+        <sphereGeometry args={[isActive ? 0.1 : 0.05, 8, 8]} />
+        <meshBasicMaterial color={isActive ? '#ffffff' : color} />
       </mesh>
     </group>
   );
+}
+
+function CameraRig({ orbits }: { orbits: OrbitData[] }) {
+  const { controls } = useThree();
+  const activeEvent = useAppStore(state => state.activeEvent);
+
+  useFrame(() => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const ctrl = controls as any;
+    if (activeEvent && ctrl && ctrl.target) {
+      // Find one of the objects to look at
+      const obj = orbits.find(o => o.noradId === activeEvent.objectA.noradId);
+      if (obj && obj.trail.length > 0) {
+        // Just look at its first position (or we could track it live)
+        const [x, y, z] = obj.trail[0];
+        const targetVec = new THREE.Vector3(x, y, z);
+        
+        // Smoothly interpolate camera target
+        ctrl.target.lerp(targetVec, 0.05);
+      }
+    } else if (ctrl && ctrl.target) {
+      // Return to center
+      ctrl.target.lerp(new THREE.Vector3(0, 0, 0), 0.05);
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+
+  return null;
 }
 
 export default function OrbitGlobe({ orbits, conjunctionLinks = [] }: OrbitGlobeProps) {
@@ -120,7 +155,6 @@ export default function OrbitGlobe({ orbits, conjunctionLinks = [] }: OrbitGlobe
     <div className="w-full h-full min-h-[500px]">
       <Canvas camera={{ position: [0, 15, 25], fov: 45 }}>
         <color attach="background" args={['#050810']} />
-        
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 5]} intensity={1.5} />
         
@@ -133,7 +167,6 @@ export default function OrbitGlobe({ orbits, conjunctionLinks = [] }: OrbitGlobe
           <Satellite key={orbit.noradId} data={orbit} />
         ))}
 
-        {/* Render conjunction links if any exist */}
         {conjunctionLinks.map((link, idx) => (
           <Line 
             key={idx} 
@@ -144,7 +177,10 @@ export default function OrbitGlobe({ orbits, conjunctionLinks = [] }: OrbitGlobe
           />
         ))}
 
+        <CameraRig orbits={orbits} />
+
         <OrbitControls 
+          makeDefault
           enablePan={false} 
           minDistance={EARTH_RADIUS_KM * SCALE + 1} 
           maxDistance={50}
