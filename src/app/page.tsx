@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { ShieldAlert, Activity, Satellite, Loader2, Bot, AlertTriangle, RefreshCw, Info, ChevronDown, ChevronUp, FastForward, FlaskConical } from 'lucide-react';
-import OrbitGlobe, { OrbitData } from '@/components/OrbitGlobe';
+import dynamic from 'next/dynamic';
+import type { OrbitData } from '@/components/OrbitGlobe';
+const OrbitGlobe = dynamic(() => import('@/components/OrbitGlobe'), { ssr: false });
 import { parseTLEToSatrec, propagateOverWindow } from '@/lib/orbits/propagation';
 import { TLEResponse } from '@/lib/types/tle';
 import { ConjunctionEvent } from '@/lib/types/orbits';
@@ -228,8 +230,23 @@ export default function DashboardShell() {
               <Loader2 className="w-8 h-8 animate-spin text-accent" />
               [ INITIALIZING 3D RENDER ENGINE ]
             </div>
-          ) : error ? (
-            <div className="text-critical font-mono">{error}</div>
+          ) : error && !isDemoMode ? (
+            <div className="absolute inset-0 bg-background/80 backdrop-blur z-20 flex flex-col items-center justify-center p-8 text-center border-2 border-critical rounded-lg">
+              <AlertTriangle className="w-12 h-12 text-critical mb-4" />
+              <h2 className="text-xl font-bold mb-2">TELEMETRY OFFLINE</h2>
+              <p className="text-white/60 mb-6 max-w-md">
+                Unable to reach CelesTrak and no cached data is available. 
+                <br /><br />
+                <span className="font-mono text-xs text-critical/80 bg-critical/10 p-2 rounded block">{error}</span>
+              </p>
+              <button 
+                onClick={() => setDemoMode(true)}
+                className="bg-warning/20 hover:bg-warning/40 text-warning border border-warning/50 px-6 py-3 rounded transition-colors font-bold flex items-center gap-2"
+              >
+                <FlaskConical className="w-5 h-5" />
+                LOAD DEMO SCENARIO
+              </button>
+            </div>
           ) : (
             <OrbitGlobe orbits={orbits} />
           )}
@@ -259,6 +276,11 @@ export default function DashboardShell() {
               <div className="flex items-center justify-center h-full text-white/30">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
               </div>
+            ) : error && !isDemoMode ? (
+              <div className="text-critical/50 p-4 border border-critical/20 rounded flex flex-col items-center justify-center h-48 text-center gap-4">
+                <AlertTriangle className="w-8 h-8 opacity-50" />
+                Data unavailable.
+              </div>
             ) : conjunctions.length === 0 ? (
               <div className="text-white/30 p-4 border border-white/10 rounded flex flex-col items-center justify-center h-48 text-center gap-4">
                 <ShieldAlert className="w-8 h-8 opacity-50" />
@@ -282,10 +304,13 @@ export default function DashboardShell() {
                   <div 
                     key={i} 
                     onClick={() => handleSelectEvent(event)}
-                    className={`p-3 rounded border transition-colors hover:bg-white/10 ${isActive ? 'bg-white/10 ring-1 ring-accent' : ''} ${event.riskTier === 'critical' ? 'border-critical/50' : 'border-warning/50'}`}
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectEvent(event); }}
+                    className={`p-3 rounded border transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent ${isActive ? 'bg-white/10 ring-1 ring-accent' : ''} ${event.riskTier === 'critical' ? 'border-critical/50' : 'border-warning/50'}`}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <div className={`font-bold ${event.riskTier === 'critical' ? 'text-critical' : 'text-warning'}`}>
+                      <div className={`font-bold flex items-center gap-1 ${event.riskTier === 'critical' ? 'text-critical' : 'text-warning'}`}>
+                        {event.riskTier === 'critical' ? <ShieldAlert className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                         RISK: {event.riskTier.toUpperCase()}
                       </div>
                       <div className="text-white/40 text-[10px]">

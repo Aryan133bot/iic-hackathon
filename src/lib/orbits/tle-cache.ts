@@ -58,6 +58,14 @@ let cachedObjects: TLEObject[] = [];
 let lastFetchTime: number = 0;
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
+export function getTLECacheStatus() {
+  return {
+    lastFetchTime: lastFetchTime > 0 ? new Date(lastFetchTime).toISOString() : null,
+    itemCount: cachedObjects.length,
+    isStale: Date.now() - lastFetchTime > CACHE_TTL_MS
+  };
+}
+
 export async function getTLEData(forceRefresh: boolean = false): Promise<TLEResponse> {
   const now = Date.now();
   const isCacheValid = (now - lastFetchTime) < CACHE_TTL_MS;
