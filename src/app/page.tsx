@@ -1,14 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ShieldAlert, Activity, Satellite, Loader2 } from 'lucide-react';
+import { ShieldAlert, Activity, Satellite, Loader2, Bot, AlertTriangle } from 'lucide-react';
 import OrbitGlobe, { OrbitData } from '@/components/OrbitGlobe';
 import { parseTLEToSatrec, propagateOverWindow } from '@/lib/orbits/propagation';
 import { TLEResponse } from '@/lib/types/tle';
 import { ConjunctionEvent } from '@/lib/types/orbits';
 
 // Utility to convert ECI coordinates to Three.js coordinates
-// ECI Z is North Pole. Three.js Y is up.
 const eciToThree = (x: number, y: number, z: number): [number, number, number] => {
   const SCALE = 1 / 1000;
   return [x * SCALE, z * SCALE, -y * SCALE];
@@ -19,6 +18,11 @@ export default function DashboardShell() {
   const [conjunctions, setConjunctions] = useState<ConjunctionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [activeEvent, setActiveEvent] = useState<ConjunctionEvent | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefText, setBriefText] = useState<string | null>(null);
+  const [briefError, setBriefError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -37,19 +41,15 @@ export default function DashboardShell() {
 
         setConjunctions(conjData.events || []);
 
-        // Process TLEs into Orbit trails
         const startDate = new Date();
         const processedOrbits: OrbitData[] = [];
 
         for (const obj of tleData.objects) {
           try {
             const satrec = parseTLEToSatrec(obj.line1, obj.line2);
-            // Propagate over a 90-minute window (typical LEO orbit) with 30s steps
             const trajectory = propagateOverWindow(satrec, startDate, 90, 30);
-            
             const trail = trajectory.map(pos => eciToThree(pos.eciPosition.x, pos.eciPosition.y, pos.eciPosition.z));
             
-            // Check if this object is at risk
             const riskEvent = conjData.events?.find(e => e.objectA.noradId === obj.noradId || e.objectB.noradId === obj.noradId);
 
             processedOrbits.push({
@@ -64,7 +64,6 @@ export default function DashboardShell() {
             // Ignore unparseable
           }
         }
-
         setOrbits(processedOrbits);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unknown error';
@@ -73,13 +72,36 @@ export default function DashboardShell() {
         setLoading(false);
       }
     }
-
     loadData();
   }, []);
 
+  const handleSelectEvent = async (event: ConjunctionEvent) => {
+    setActiveEvent(event);
+    setBriefLoading(true);
+    setBriefText(null);
+    setBriefError(null);
+
+    try {
+      const res = await fetch('/api/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event)
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || 'Failed to generate brief');
+      setBriefText(data.brief);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error communicating with AI';
+      setBriefError(message);
+    } finally {
+      setBriefLoading(false);
+    }
+  };
+
   return (
     <main className="flex h-screen w-full flex-col p-4 gap-4 bg-background text-foreground font-sans">
-      <header className="flex items-center justify-between border-b border-white/10 pb-4">
+      <header className="flex items-center justify-between border-b border-white/10 pb-4 shrink-0">
         <div className="flex items-center gap-2">
           <ShieldAlert className="text-accent w-6 h-6" />
           <h1 className="text-xl font-bold tracking-wider">ORBITGUARD</h1>
@@ -99,7 +121,7 @@ export default function DashboardShell() {
             <Activity className="w-4 h-4" />
             Active Alerts
           </h2>
-          <div className="flex-1 overflow-y-auto pr-2 space-y-3 font-mono text-xs">
+          <div className="flex-1 overflow-y-auto pr-2 space-y-3 font-mono text-xs cursor-pointer">
             {loading ? (
               <div className="flex items-center justify-center h-full text-white/30">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
@@ -108,9 +130,17 @@ export default function DashboardShell() {
               <div className="text-white/30 p-4 border border-white/10 rounded">No critical approaches detected in the next 24 hours.</div>
             ) : (
               conjunctions.map((event, i) => (
-                <div key={i} className={`p-3 rounded border ${event.riskTier === 'critical' ? 'border-critical/50 bg-critical/10' : 'border-warning/50 bg-warning/10'}`}>
-                  <div className="font-bold mb-1 text-white/90">RISK: {event.riskTier.toUpperCase()}</div>
-                  <div className="text-white/70">{event.objectA.name} <br/>vs<br/> {event.objectB.name}</div>
+                <div 
+                  key={i} 
+                  onClick={() => handleSelectEvent(event)}
+                  className={`p-3 rounded border transition-colors hover:bg-white/10 ${activeEvent === event ? 'bg-white/10 ring-1 ring-accent' : ''} ${event.riskTier === 'critical' ? 'border-critical/50' : 'border-warning/50'}`}
+                >
+                  <div className={`font-bold mb-1 ${event.riskTier === 'critical' ? 'text-critical' : 'text-warning'}`}>
+                    RISK: {event.riskTier.toUpperCase()}
+                  </div>
+                  <div className="text-white/90">{event.objectA.name}</div>
+                  <div className="text-white/50 my-1 text-[10px]">vs</div>
+                  <div className="text-white/90">{event.objectB.name}</div>
                   <div className="mt-2 text-white/50">Dist: {event.closestApproachKm.toFixed(2)} km</div>
                 </div>
               ))
@@ -139,15 +169,27 @@ export default function DashboardShell() {
 
         {/* Right Sidebar */}
         <aside className="col-span-3 border border-white/10 rounded-lg p-4 bg-white/5 flex flex-col gap-4 overflow-hidden">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-white/50 mb-4 shrink-0">
-            Analysis Brief
+          <h2 className="text-sm font-bold uppercase tracking-widest text-white/50 mb-4 shrink-0 flex items-center gap-2">
+            <Bot className="w-4 h-4" />
+            AI Tactical Brief
           </h2>
-          <div className="space-y-4 font-mono text-xs text-white/60 overflow-y-auto flex-1">
-            <p>Tracking {orbits.length} active objects.</p>
-            <p>Scanning 24-hour forward window for conjunctions under 10km.</p>
-            {conjunctions.length > 0 && (
-              <p className="text-warning">Detected {conjunctions.length} potential conjunction events requiring operator review.</p>
-            )}
+          <div className="font-mono text-xs text-white/70 overflow-y-auto flex-1 whitespace-pre-wrap leading-relaxed">
+            {!activeEvent ? (
+              <div className="text-white/30 italic">Select an active alert from the left panel to generate a tactical AI briefing on the conjunction risk.</div>
+            ) : briefLoading ? (
+              <div className="flex items-center gap-2 text-accent">
+                <Loader2 className="w-4 h-4 animate-spin" /> Generating brief...
+              </div>
+            ) : briefError ? (
+              <div className="text-critical flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                {briefError}
+              </div>
+            ) : briefText ? (
+              <div className="animate-in fade-in duration-500">
+                {briefText}
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>
