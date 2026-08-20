@@ -21,7 +21,7 @@ export default function DashboardShell() {
 
   const [activeEvent, setActiveEvent] = useState<ConjunctionEvent | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
-  const [briefText, setBriefText] = useState<string | null>(null);
+  const [briefData, setBriefData] = useState<{ summary: string; implication: string; caveat: string; riskTier: string } | null>(null);
   const [briefError, setBriefError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export default function DashboardShell() {
   const handleSelectEvent = async (event: ConjunctionEvent) => {
     setActiveEvent(event);
     setBriefLoading(true);
-    setBriefText(null);
+    setBriefData(null);
     setBriefError(null);
 
     try {
@@ -90,7 +90,7 @@ export default function DashboardShell() {
       const data = await res.json();
       
       if (!res.ok) throw new Error(data.error || 'Failed to generate brief');
-      setBriefText(data.brief);
+      setBriefData(data.brief);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error communicating with AI';
       setBriefError(message);
@@ -173,21 +173,32 @@ export default function DashboardShell() {
             <Bot className="w-4 h-4" />
             AI Tactical Brief
           </h2>
-          <div className="font-mono text-xs text-white/70 overflow-y-auto flex-1 whitespace-pre-wrap leading-relaxed">
+          <div className="overflow-y-auto flex-1">
             {!activeEvent ? (
-              <div className="text-white/30 italic">Select an active alert from the left panel to generate a tactical AI briefing on the conjunction risk.</div>
+              <div className="font-mono text-xs text-white/30 italic">Select an active alert from the left panel to generate a tactical AI briefing on the conjunction risk.</div>
             ) : briefLoading ? (
-              <div className="flex items-center gap-2 text-accent">
+              <div className="font-mono text-xs flex items-center gap-2 text-accent">
                 <Loader2 className="w-4 h-4 animate-spin" /> Generating brief...
               </div>
             ) : briefError ? (
-              <div className="text-critical flex items-start gap-2">
+              <div className="font-mono text-xs text-critical flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 {briefError}
               </div>
-            ) : briefText ? (
-              <div className="animate-in fade-in duration-500">
-                {briefText}
+            ) : briefData ? (
+              <div className="animate-in fade-in duration-500 flex flex-col gap-4">
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Summary</div>
+                  <div className="text-sm font-sans text-white/90 leading-snug">{briefData.summary}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Implication</div>
+                  <div className="text-sm font-sans text-white/80 leading-snug">{briefData.implication}</div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-white/10 space-y-1">
+                  <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Caveat</div>
+                  <div className="text-xs font-mono text-white/40 italic">{briefData.caveat}</div>
+                </div>
               </div>
             ) : null}
           </div>
