@@ -4,7 +4,7 @@ export type TLEObject = {
   ownerCountry?: string;
   line1: string;
   line2: string;
-  epoch: string;
+  epoch?: string;
   objectType: 'satellite' | 'debris' | 'unknown';
 };
 

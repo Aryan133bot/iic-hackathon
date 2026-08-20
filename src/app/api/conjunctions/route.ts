@@ -4,17 +4,8 @@ import { getTLEData } from '@/lib/orbits/tle-cache';
 import { parseTLEToSatrec } from '@/lib/orbits/propagation';
 import { screenConjunctions } from '@/lib/orbits/conjunctions';
 import { ConjunctionEvent } from '@/lib/types/orbits';
+import { updateTLEEpochToNow } from '@/lib/orbits/tle-utils';
 import demoData from '@/data/demo-scenario.json';
-
-// Helper to update a TLE epoch to "now" so demo data is always valid
-function updateTLEEpochToNow(line1: string): string {
-  const now = new Date();
-  const year = now.getUTCFullYear() % 100;
-  const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 0));
-  const diff = (now.getTime() - start.getTime()) / 86400000;
-  const epochStr = `${year.toString().padStart(2, '0')}${diff.toFixed(8).padStart(12, '0')}`;
-  return line1.substring(0, 18) + epochStr + line1.substring(32);
-}
 
 let cachedEvents: ConjunctionEvent[] = [];
 let lastComputeTime = 0;

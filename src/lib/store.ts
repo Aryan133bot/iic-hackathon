@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { ConjunctionEvent } from '@/lib/types/orbits';
 
 export type FilterTier = 'all' | 'critical' | 'high' | 'moderate' | 'low';
-export type FilterTime = 'all' | '6h' | '12h' | '24h';
 
 interface AppState {
   activeEvent: ConjunctionEvent | null;
@@ -13,9 +12,6 @@ interface AppState {
   
   filterTier: FilterTier;
   setFilterTier: (tier: FilterTier) => void;
-  
-  filterTime: FilterTime;
-  setFilterTime: (time: FilterTime) => void;
 
   isDemoMode: boolean;
   setDemoMode: (val: boolean) => void;
@@ -33,9 +29,6 @@ export const useAppStore = create<AppState>((set) => ({
   
   filterTier: 'all',
   setFilterTier: (tier) => set({ filterTier: tier }),
-  
-  filterTime: 'all',
-  setFilterTime: (time) => set({ filterTime: time }),
   
   isDemoMode: false,
   setDemoMode: (val) => set({ isDemoMode: val }),

@@ -14,6 +14,7 @@ const config: Config = {
         accent: "var(--accent)",
         warning: "var(--warning)",
         critical: "var(--critical)",
+        'warning-foreground': '#000000',
       },
       fontFamily: {
         sans: ["var(--font-inter)"],

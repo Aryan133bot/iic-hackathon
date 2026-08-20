@@ -4,11 +4,35 @@ import { parseTLEToSatrec } from '@/lib/orbits/propagation';
 
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
+    const req = https.get(url, (res) => {
+      const statusCode = res.statusCode ?? 0;
+
+      // Follow one level of redirect for 301/302
+      if ((statusCode === 301 || statusCode === 302) && res.headers.location) {
+        res.resume(); // drain the current response
+        httpsGet(res.headers.location).then(resolve, reject);
+        return;
+      }
+
+      // Reject on non-2xx status codes
+      if (statusCode < 200 || statusCode >= 300) {
+        res.resume(); // drain so the socket can be freed
+        reject(new Error(`HTTP request failed with status code ${statusCode}`));
+        return;
+      }
+
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => resolve(data));
-    }).on('error', reject);
+    });
+
+    req.on('error', reject);
+
+    // 15-second timeout
+    req.setTimeout(15000, () => {
+      req.destroy();
+      reject(new Error('HTTP request timed out after 15 seconds'));
+    });
   });
 }
 
@@ -27,8 +51,20 @@ function parseTLEText(text: string, objectType: 'satellite' | 'debris'): TLEObje
     const line1 = lines[i + 1];
     const line2 = lines[i + 2];
 
+    // Validate line format: line1 must start with '1', line2 must start with '2'
+    if (!line1.startsWith('1') || !line2.startsWith('2')) {
+      console.warn('Skipping TLE block with invalid line format:', name);
+      continue;
+    }
+
     try {
       const noradId = parseInt(line1.substring(2, 7).trim(), 10);
+
+      // Validate noradId is a valid number
+      if (isNaN(noradId)) {
+        console.warn('Skipping TLE block with invalid NORAD ID:', name);
+        continue;
+      }
       
       const epochYearStr = line1.substring(18, 20);
       const epochYear = parseInt(epochYearStr, 10);
@@ -58,6 +94,9 @@ let cachedObjects: TLEObject[] = [];
 let lastFetchTime: number = 0;
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
+// Race condition guard: reuse in-flight fetch promise
+let inFlightPromise: Promise<TLEResponse> | null = null;
+
 export function getTLECacheStatus() {
   return {
     lastFetchTime: lastFetchTime > 0 ? new Date(lastFetchTime).toISOString() : null,
@@ -79,6 +118,21 @@ export async function getTLEData(forceRefresh: boolean = false): Promise<TLEResp
     };
   }
 
+  // If a fetch is already in progress, return that promise instead of starting a new one
+  if (inFlightPromise) {
+    return inFlightPromise;
+  }
+
+  inFlightPromise = fetchTLEData(now);
+
+  try {
+    return await inFlightPromise;
+  } finally {
+    inFlightPromise = null;
+  }
+}
+
+async function fetchTLEData(now: number): Promise<TLEResponse> {
   try {
     const activeText = await httpsGet('https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=TLE');
     const activeObjects = parseTLEText(activeText, 'satellite');
@@ -87,7 +141,7 @@ export async function getTLEData(forceRefresh: boolean = false): Promise<TLEResp
       INDIAN_KEYWORDS.some(kw => sat.name.toUpperCase().includes(kw))
     );
 
-    const randomActive = activeObjects
+    const selectedActive = activeObjects
       .filter(sat => !isroObjects.includes(sat))
       .slice(0, 200);
 
@@ -99,7 +153,7 @@ export async function getTLEData(forceRefresh: boolean = false): Promise<TLEResp
       console.error('Debris fetch failed:', e);
     }
 
-    const curatedObjects = [...isroObjects, ...randomActive, ...debrisObjects];
+    const curatedObjects = [...isroObjects, ...selectedActive, ...debrisObjects];
 
     // Filter out invalid TLEs early by trying to parse them
     const validObjects = curatedObjects.filter(obj => {
@@ -111,7 +165,12 @@ export async function getTLEData(forceRefresh: boolean = false): Promise<TLEResp
       }
     });
 
-    cachedObjects = validObjects;
+    // Prevent empty response from overwriting a valid cache
+    if (validObjects.length === 0 && cachedObjects.length > 0) {
+      console.warn('CelesTrak returned 0 valid objects; keeping existing cache of', cachedObjects.length, 'objects');
+    } else {
+      cachedObjects = validObjects;
+    }
     lastFetchTime = now;
 
     return {

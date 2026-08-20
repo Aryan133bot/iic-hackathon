@@ -16,10 +16,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const event: ConjunctionEvent = await req.json();
+    // Handle req.json() parse failure
+    let event: ConjunctionEvent;
+    try {
+      event = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
 
     if (!event || !event.objectA || !event.objectB) {
       return NextResponse.json({ error: 'Invalid conjunction event data provided' }, { status: 400 });
+    }
+
+    // Validate required fields exist and have correct types
+    if (
+      typeof event.riskTier !== 'string' ||
+      typeof event.closestApproachKm !== 'number' ||
+      typeof event.relativeVelocityKmS !== 'number' ||
+      typeof event.timeOfClosestApproach !== 'string'
+    ) {
+      return NextResponse.json(
+        { error: 'Missing or invalid fields: riskTier (string), closestApproachKm (number), relativeVelocityKmS (number), and timeOfClosestApproach (string) are required' },
+        { status: 400 }
+      );
     }
 
     // Cache key
@@ -101,6 +120,12 @@ CRITICAL INSTRUCTIONS:
     
     // Save to cache
     briefingCache.set(cacheKey, payload);
+
+    // Cap the briefing cache at 100 entries
+    if (briefingCache.size > 100) {
+      const firstKey = briefingCache.keys().next().value;
+      if (firstKey) briefingCache.delete(firstKey);
+    }
 
     return NextResponse.json(payload);
   } catch (error: unknown) {

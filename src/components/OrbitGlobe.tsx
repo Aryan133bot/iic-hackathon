@@ -21,15 +21,8 @@ export interface OrbitData {
   riskTier?: 'critical' | 'high' | 'moderate' | 'low';
 }
 
-export interface ConjunctionLink {
-  posA: TrailPoint;
-  posB: TrailPoint;
-  riskTier: 'critical' | 'high' | 'moderate' | 'low';
-}
-
 interface OrbitGlobeProps {
   orbits: OrbitData[];
-  conjunctionLinks?: ConjunctionLink[];
 }
 
 function Earth() {
@@ -106,8 +99,8 @@ function Satellite({ data }: { data: OrbitData }) {
     );
 
     if (isActive && materialRef.current) {
-      // Pulse opacity
-      materialRef.current.opacity = 0.4 + 0.6 * Math.sin(time * 5);
+      // Pulse opacity — range [0.4, 1.0]
+      materialRef.current.opacity = 0.4 + 0.3 * (1 + Math.sin(time * 5));
     } else if (materialRef.current) {
       materialRef.current.opacity = 0.3;
     }
@@ -142,6 +135,8 @@ function Satellite({ data }: { data: OrbitData }) {
 function CameraRig({ orbits }: { orbits: OrbitData[] }) {
   const { controls } = useThree();
   const activeEvent = useAppStore(state => state.activeEvent);
+  const targetVec = useRef(new THREE.Vector3());
+  const zeroVec = useRef(new THREE.Vector3(0, 0, 0));
 
   useFrame(() => {
     /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -152,14 +147,14 @@ function CameraRig({ orbits }: { orbits: OrbitData[] }) {
       if (obj && obj.trail.length > 0) {
         // Just look at its first position (or we could track it live)
         const [x, y, z] = obj.trail[0];
-        const targetVec = new THREE.Vector3(x, y, z);
+        targetVec.current.set(x, y, z);
         
         // Smoothly interpolate camera target
-        ctrl.target.lerp(targetVec, 0.05);
+        ctrl.target.lerp(targetVec.current, 0.05);
       }
     } else if (ctrl && ctrl.target) {
       // Return to center
-      ctrl.target.lerp(new THREE.Vector3(0, 0, 0), 0.05);
+      ctrl.target.lerp(zeroVec.current, 0.05);
     }
     /* eslint-enable @typescript-eslint/no-explicit-any */
   });
@@ -167,7 +162,7 @@ function CameraRig({ orbits }: { orbits: OrbitData[] }) {
   return null;
 }
 
-export default function OrbitGlobe({ orbits, conjunctionLinks = [] }: OrbitGlobeProps) {
+export default function OrbitGlobe({ orbits }: OrbitGlobeProps) {
   return (
     <div className="w-full h-full min-h-[500px]">
       <Canvas camera={{ position: [0, 15, 25], fov: 45 }}>
@@ -182,16 +177,6 @@ export default function OrbitGlobe({ orbits, conjunctionLinks = [] }: OrbitGlobe
         
         {orbits.map((orbit) => (
           <Satellite key={orbit.noradId} data={orbit} />
-        ))}
-
-        {conjunctionLinks.map((link, idx) => (
-          <Line 
-            key={idx} 
-            points={[link.posA, link.posB]} 
-            color={link.riskTier === 'critical' ? '#ef4444' : '#fbbf24'} 
-            lineWidth={2}
-            dashed={true}
-          />
         ))}
 
         <CameraRig orbits={orbits} />

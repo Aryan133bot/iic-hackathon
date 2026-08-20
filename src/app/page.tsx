@@ -24,6 +24,15 @@ export default function DashboardShell() {
   const [infoOpen, setInfoOpen] = useState(false);
   const dataStartDate = useRef<number>(Date.now());
 
+  // Live UTC clock
+  const [utcTime, setUtcTime] = useState(new Date().toISOString().split('T')[1].substring(0, 8));
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setUtcTime(new Date().toISOString().split('T')[1].substring(0, 8));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Zustand Store
   const { 
     activeEvent, setActiveEvent,
@@ -140,7 +149,8 @@ export default function DashboardShell() {
     // Calculate index in the trail
     const tca = new Date(event.timeOfClosestApproach).getTime();
     const diffMs = tca - dataStartDate.current;
-    const targetIndex = Math.max(0, diffMs / (30 * 1000));
+    const maxTrail = orbits.reduce((max, o) => Math.max(max, o.trail.length), 1);
+    const targetIndex = Math.max(0, Math.min(diffMs / (30 * 1000), maxTrail - 1));
     setTimeCursorIndex(targetIndex);
   };
 
@@ -154,7 +164,7 @@ export default function DashboardShell() {
   return (
     <main className="flex h-screen w-full flex-col p-4 gap-4 bg-background text-foreground font-sans overflow-hidden">
       {isDemoMode && (
-        <div className="absolute top-0 left-0 w-full bg-warning text-warning-foreground font-bold text-center py-1 text-xs tracking-widest z-50 shadow-md">
+        <div className="absolute top-0 left-0 w-full bg-warning text-black font-bold text-center py-1 text-xs tracking-widest z-50 shadow-md">
           DEMO SCENARIO — Illustrative data, not live
         </div>
       )}
@@ -169,7 +179,7 @@ export default function DashboardShell() {
           </div>
           <div className="text-xs font-mono text-white/40 flex items-center gap-2 bg-white/5 px-3 py-1 rounded">
             <Activity className="w-3 h-3" />
-            UTC: {new Date().toISOString().split('T')[1].substring(0, 8)}
+            UTC: {utcTime}
           </div>
         </div>
         
@@ -295,16 +305,17 @@ export default function DashboardShell() {
                 </button>
               </div>
             ) : (
-              conjunctions.map((event, i) => {
+              conjunctions.map((event) => {
                 const isActive = activeEvent === event;
                 const msToApproach = new Date(event.timeOfClosestApproach).getTime() - Date.now();
-                const hours = Math.floor(msToApproach / (1000 * 60 * 60));
-                const mins = Math.floor((Math.abs(msToApproach) % (1000 * 60 * 60)) / (1000 * 60));
+                const absMsToApproach = Math.abs(msToApproach);
+                const hours = Math.floor(absMsToApproach / (1000 * 60 * 60));
+                const mins = Math.floor((absMsToApproach % (1000 * 60 * 60)) / (1000 * 60));
                 const isPast = msToApproach < 0;
                 
                 return (
                   <div 
-                    key={i} 
+                    key={`${event.objectA.noradId}-${event.objectB.noradId}`} 
                     onClick={() => handleSelectEvent(event)}
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectEvent(event); }}
@@ -355,7 +366,7 @@ export default function DashboardShell() {
                             {briefError}
                           </div>
                         ) : briefData ? (
-                          <div className="animate-in fade-in flex flex-col gap-3">
+                          <div className="flex flex-col gap-3">
                             <div>
                               <div className="text-[9px] text-white/30 uppercase tracking-widest mb-1">Summary</div>
                               <div className="text-white/90 font-sans">{briefData.summary}</div>
