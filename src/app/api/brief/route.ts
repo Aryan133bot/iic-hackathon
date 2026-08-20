@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(briefingCache.get(cacheKey));
     }
 
-    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
     const prompt = `
 You are an orbital mechanics AI assistant working at a Space Situational Awareness (SSA) Mission Control.
