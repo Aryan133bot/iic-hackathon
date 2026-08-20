@@ -25,12 +25,9 @@ export default function DashboardShell() {
   const dataStartDate = useRef<number>(Date.now());
 
   // Live UTC clock
-  const [mounted, setMounted] = useState(false);
-  const [utcTime, setUtcTime] = useState("");
+  const [utcTime, setUtcTime] = useState(new Date().toISOString().split('T')[1].substring(0, 8));
   
   useEffect(() => {
-    setMounted(true);
-    setUtcTime(new Date().toISOString().split('T')[1].substring(0, 8));
     const timer = setInterval(() => {
       setUtcTime(new Date().toISOString().split('T')[1].substring(0, 8));
     }, 1000);
@@ -181,9 +178,9 @@ export default function DashboardShell() {
               ORBITGUARD
             </h1>
           </div>
-          <div className="text-xs font-mono text-white/40 flex items-center gap-2 bg-white/5 px-3 py-1 rounded">
+          <div suppressHydrationWarning className="text-xs font-mono text-white/40 flex items-center gap-2 bg-white/5 px-3 py-1 rounded">
             <Activity className="w-3 h-3" />
-            UTC: {mounted ? utcTime : "--:--:--"}
+            UTC: {utcTime}
           </div>
         </div>
         
